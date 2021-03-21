@@ -222,12 +222,22 @@ class BLink:
         runner = subprocess.check_call
         if hasattr(subprocess, 'run'):
             runner = subprocess.check_call
+            print("  - using subprocess.check_call")
+        tryCmd = "xdg-open"
+        # TODO: try os.popen('open "{}"') on mac
+        if platform.system() == "Windows":
+            os.startfile(execStr, 'open')
+            # runner('cmd /c start "{}"'.format(execStr))
+            return
         try:
-            runner(['xdg-open', execStr])
+            print("  - {}...".format(tryCmd))
+            runner([tryCmd, execStr])
         except OSError as ex:
             try:
+                print("  - open...")
                 runner(['open', execStr], check=True)
             except OSError as ex:
+                print("  - trying xdg-launch...")
                 runner(['xdg-launch', execStr], check=True)
 
 dtLines = {
