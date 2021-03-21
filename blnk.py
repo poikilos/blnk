@@ -4,6 +4,9 @@ import os
 import platform
 import subprocess
 
+class FileTypeError(Exception):
+    pass
+
 profile = None
 
 myDirName = "blnk"
@@ -29,6 +32,10 @@ else:
     shortcutsDir = os.path.join(share, "applications")
     dtPath = os.path.join(shortcutsDir, "blnk.desktop")
 
+myBinPath = __file__
+tryBinPath = os.path.join(local, "bin", "blnk")
+if os.path.isfile(tryBinPath):
+    myBinPath = tryBinPath
 
 class BLink:
     NO_SECTION = "\n"
@@ -41,7 +48,10 @@ class BLink:
         self.path = None
         self.assignmentOperator = assignmentOperator
         self.commentDelimiter = commentDelimiter
-        self.load(path)
+        try:
+            self.load(path)
+        except FileTypeError as ex:
+            raise ex
 
     def splitLine(self, line):
         i = line.find(self.assignmentOperator)
@@ -88,12 +98,14 @@ class BLink:
                       "".format(line, self.lastSection))
         if self.contentType is None:
             if not line.startswith("Content-Type:"):
-                raise ValueError(
+                raise FileTypeError(
                     "The file must contain \"Content-Type:\""
                     " (usually \"Content-Type: text/blnk\")"
                     " before anything else, but"
                     " _pushLine got \"{}\" (last file: {})"
-                    "".format(line, self.path))
+                    "".format(line, self.path)
+                )
+                print("* running file directly...")
         trySection = self.getSection(line)
         if self.isComment(line):
             pass
@@ -133,7 +145,13 @@ class BLink:
             row = 0
             for line in ins:
                 row += 1
-                self._pushLine(line, row=row)
+                try:
+                    self._pushLine(line, row=row)
+                except FileTypeError as ex:
+                    print(str(ex))
+                    print("* running file directly...")
+                    self._choose_app(self.path)
+                    raise ex
             self.lastSection = None
 
     def getBranch(self, section, key):
@@ -167,7 +185,7 @@ class BLink:
                 path = "\"" + path + "\""
             print("WARNING: There was no \"{}\" variable in {}"
                   "".format(key, path))
-            return False
+            return None
         elif section != trySection:
             sectionMsg = section
             if section == BLink.NO_SECTION:
@@ -216,38 +234,62 @@ class BLink:
 
         return path
 
-    def run(self):
-        execStr = self.getExec()
-        print("* running \"{}\"...".format(execStr))
+    @staticmethod
+    def _run_parts(parts, check=True):
+        print("* running \"{}\"...".format(parts))
         runner = subprocess.check_call
         if hasattr(subprocess, 'run'):
             runner = subprocess.check_call
             print("  - using subprocess.check_call")
+        try:
+            runner(parts, check=check)
+        except TypeError as ex:
+            if "unexpected keyword argument 'check'" in str(ex):
+                runner(parts)
+            else:
+                raise ex
+
+    @staticmethod
+    def _run(path):
         tryCmd = "xdg-open"
         # TODO: try os.popen('open "{}"') on mac
         if platform.system() == "Windows":
-            os.startfile(execStr, 'open')
-            # runner('cmd /c start "{}"'.format(execStr))
+            os.startfile(path, 'open')
+            # runner('cmd /c start "{}"'.format(path))
             return
         try:
             print("  - {}...".format(tryCmd))
-            runner([tryCmd, execStr])
+            BLink._run_parts([tryCmd, path], check=True)
         except OSError as ex:
             try:
                 print("  - open...")
-                runner(['open', execStr], check=True)
+                BLink._run_parts(['open', path], check=True)
             except OSError as ex:
                 print("  - trying xdg-launch...")
-                runner(['xdg-launch', execStr], check=True)
+                BLink._run_parts(['xdg-launch', path], check=True)
 
-dtLines = {
+    def _choose_app(self, path):
+        print("  - choosing app for \"{}\"".format(path))
+        app = "geany"
+        print("    - {}".format(app))
+        BLink._run_parts([app, self.path])
+
+    def run(self):
+        execStr = self.getExec()
+        if execStr is None:
+            print("* Exec is None...")
+            self._choose_app(execStr)
+            return
+        BLink._run(execStr)
+
+dtLines = [
     "[Desktop Entry]",
-    "Exec=blnk",
+    "Exec={}".format(myBinPath),
     "MimeType=text/blnk;",
-    "Name=blnk",
+    "Name=blnk".format(myBinPath),
     "NoDisplay=true",
     "Type=Application",
-}
+]
 
 def main(args):
     print("* checking for \"{}\"".format(dtPath))
@@ -256,13 +298,28 @@ def main(args):
         with open(dtPath, 'w') as outs:
             for line in dtLines:
                 outs.write(line + "\n")
-        print("  OK")
+        if not platform.system == "Windows":
+            print("  - installing...")
+            iconCommandParts = ["xdg-desktop-icon", "install",
+                                "--novendor"]
+            cmdParts = iconCommandParts + [dtPath]
+            try:
+                BLink._run_parts(cmdParts)
+            except subprocess.CalledProcessError:
+                os.remove(dtPath)
+                # ^ so it will try again next time
+                print("{} failed.".format(cmdParts))
+                print(str(cmdParts))
 
     if len(args) < 2:
         raise ValueError("The first argument is the program but there"
                          " is no argument after that. Provide a file.")
-    link = BLink(args[1])
-    link.run()
+    try:
+        link = BLink(args[1])
+        link.run()
+    except FileTypeError:
+        pass
+        # already handled by Blink
 
 if __name__ == "__main__":
     main(sys.argv)
