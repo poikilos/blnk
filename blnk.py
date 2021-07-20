@@ -199,18 +199,26 @@ class BLink:
 
     def load(self, path):
         self.path = path
-        with open(path, 'r') as ins:
-            row = 0
-            for line in ins:
-                row += 1
-                try:
-                    self._pushLine(line, row=row)
-                except FileTypeError as ex:
-                    print(str(ex))
-                    print("* running file directly...")
-                    self._choose_app(self.path)
-                    raise ex
-            self.lastSection = None
+        try:
+            with open(path, 'r') as ins:
+                row = 0
+                for line in ins:
+                    row += 1
+                    try:
+                        self._pushLine(line, row=row)
+                    except FileTypeError as ex:
+                        print(str(ex))
+                        print("* running file directly...")
+                        self._choose_app(self.path)
+                        raise ex
+                self.lastSection = None
+        except UnicodeDecodeError as ex:
+            if path.lower().endswith(".blnk"):
+                raise ex
+            # else:
+            # This is probably not a blnk file, so allow
+            # the blank Exec handler to check the file extension.
+            pass
 
     def getBranch(self, section, key):
         '''
@@ -329,6 +337,9 @@ class BLink:
     def _choose_app(self, path):
         print("  - choosing app for \"{}\"".format(path))
         app = "geany"
+        # If you set blnk to handle unknown files:
+        if path.lower().endswith(".kdb"):
+            app = "keepassxc"
         print("    - {}".format(app))
         BLink._run_parts([app, path])
 
