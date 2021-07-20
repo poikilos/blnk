@@ -330,13 +330,13 @@ class BLink:
         print("  - choosing app for \"{}\"".format(path))
         app = "geany"
         print("    - {}".format(app))
-        BLink._run_parts([app, self.path])
+        BLink._run_parts([app, path])
 
     def run(self):
         execStr = self.getExec()
         if execStr is None:
             print("* Exec is None...")
-            self._choose_app(execStr)
+            self._choose_app(self.path)
             return
         BLink._run(execStr)
 
